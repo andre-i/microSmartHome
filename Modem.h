@@ -7,8 +7,8 @@
 #include "Constants.h"
 
 // hard reset POWER OFF
-#define SIM_RST  LOW    //  sim900 power reset level 0 - reset
-#define SIM_NO_RST  HIGH //              level 1 - in work
+#define SIM_RST     LOW  //  sim900 power reset level 0 - reset
+#define SIM_NO_RST  HIGH //  level 1 - in work
 //
 class Modem {
   public:
@@ -48,7 +48,7 @@ class Modem {
     bool fillUCS2PhoneNumber(uint8_t numberInBook, char *phone);
     bool fillGSMPhone(uint8_t clientNumber, char *phone);
     bool checkPhoneFormat(char *phone); // phone number must be in GSM format
-    void changeShowCommand(); // whether show command on it call
+    void changeShowCommand(bool isShow); // whether show command on it call
     bool fillMinThemperature(char *phone);
 /* ==================== PRIVATE ====================*/
   private:
@@ -61,4 +61,3 @@ class Modem {
 
 
 #endif
-  
