@@ -8,7 +8,7 @@
 class VoiceHandler{
   public:
     VoiceHandler(Modem *m);
-    void setSensorsData( uint8_t themp, uint8_t motions);
+    void setSensorsData(uint8_t minThemp, int themp, uint8_t motions);
     uint8_t handleIncoming(char *phone); // return SUCCESS if say answer and return ASSIGN_ADMIN if button pressed
 
 
@@ -16,7 +16,8 @@ private:
   //  var
     Modem *modem;
     int mode;
-    uint8_t themperature = 0;
+    uint8_t coolThemperature = 0;
+    int themperature = 0;
     uint8_t motionCounter = 0;
     char call[30]; //  incoming calls
     char incomingPhone[14];
