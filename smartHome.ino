@@ -87,23 +87,29 @@ unsigned volatile int dropMotionTimer = 0;
 // timer intr handler
 uint8_t volatile delayEspired = 0;
 
+// temperature
 uint8_t coolThemperature = MIN_FIRING_THEMPERATURE;
+
+// work MODE
+//  duct - pipe beetwen serial and modem
+//  test - no send sms
+//  work - normally worked device
+//        DUCT_PIN not pressed
+enum modes { DUCT = false, TEST = true};
+bool mode = DUCT;
 
 
 
 void setup() {
   wdt_reset();
   wdt_disable();
-  flags = 0b11100000;
   // start up serial port`s
   Serial.begin(9600);
-#if DEBUG
-  Serial.println(F("\n\tStart_Smart_Home_Apps v_0.04\n\tDEBUG\n "));
-#endif
+  Serial.println(F("\n\tStart_Smart_Home_Apps v_0.05\n"));
   // prepare device for write admin phone tophonebook
   // SIM
   pinMode(RST_PIN, OUTPUT);
-  digitalWrite(RST_PIN, SIM_NO_RST);
+  digitalWrite(RST_PIN, SIM_RST);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
   // alarm
@@ -133,22 +139,31 @@ void setup() {
     printAddress(sensorAddr);
     }
   */
-  delay(200);
+
+  setEspiredTime(250);
+  while (delayEspired != 0) {
+    if (delayEspired % 8 == 0) {
+      Serial.print(F(" tick"));
+      delay(1000);
+    }
+  }
+  delay(4000);
+  Serial.println(F("\n  START WATCH !!!\n"));
   modem.initModem();  // init sim module
   motionCounter = 0;
+  bitClear(warningFlags, MOTION_SMS);
   coolThemperature = util.getCoolThemperature();
+  flags = 0b11100000;
 #if DEBUG
   Serial.println("COOL themperature = " + String(coolThemperature));
 #endif
-  handleSms();
   readThemperature();
 }
 
 void loop() {
-  if (digitalRead(DUCT_PIN) == LOW && digitalRead(BUTTON_PIN) == LOW)buttonHandle();
 
   // ------- DUCT for swap beetwen serial and modem -----------
-  if (digitalRead(DUCT_PIN) == LOW) {
+  if (digitalRead(DUCT_PIN) == LOW && mode == DUCT) {
     while (pipe.available() > 0)Serial.write(pipe.read());
     while (Serial.available() > 0)pipe.write(Serial.read());
   } else {
@@ -157,27 +172,33 @@ void loop() {
     // voltage
     if (digitalRead(VOLTAGE_PIN) == LOW
         && bitRead(flags, VOLTAGE_SEND_FLAG) == 1) {
+      Serial.println(F("Start send low VOLTAGE sms"));
       if (sendWarning(VOLTAGE))bitClear(flags, VOLTAGE_SEND_FLAG);
     }
     // motion
     if (bitRead(warningFlags, MOTION_SMS) == 1
         && bitRead(flags, MOTION_SEND_FLAG) == 1) {
+      Serial.println(F("Start send motion warning sms"));
       if (sendWarning(MOTION)) bitClear(flags, MOTION_SEND_FLAG);
     }
     //  cool firing
     if (bitRead(warningFlags, COOL_SMS) == 1
         && bitRead(flags, COOL_SEND_FLAG) == 1) {
+      Serial.println(F("Start send cool warning sms"));
       if (sendWarning(COOL))bitClear(flags, COOL_SEND_FLAG);
     }
 
     // ---------------  check themperature  -----------------
     if (bitRead(flags, CHECK_FLAG) == 1)readThemperature();
-    delay(5);
 
     // ------------  LISTEN MODEM  ----------------------
     if (modem.available() > 0) handleModemMsg();
 
+    if(motionCounter == 0 && bitRead(warningFlags, MOTION_SMS) == 1){
+      bitClear(warningFlags, MOTION_SMS);
+    }
   }
+  if (digitalRead(BUTTON_PIN) == LOW && digitalRead(DUCT_PIN)  == LOW)buttonHandle();
 }
 
 
@@ -211,7 +232,11 @@ void buttonHandle() {
     else pressCounter--;
     delay(20);
   }
-  if (pressCounter > 2)modem.changeShowCommand();
+  if (pressCounter > 2 ) {
+    mode = !mode;
+    modem.changeShowCommand(mode);
+  }
+  Serial.println(mode ? "\n_MODE TEST_" : "\n_MODE DUCT_");
   while (digitalRead(BUTTON_PIN) == LOW) {}
 }
 
@@ -231,6 +256,7 @@ void setEspiredTime(uint8_t delayTime) {
     call func for send warning sms
 */
 void readThemperature() {
+  modem.sendCommand(F("AT+GSMBUSY=1 \r"));
   if (digitalRead(DUCT_PIN) == HIGH)digitalWrite(LED_PIN, LOW);
 #if DEBUG
   Serial.print(F("\n\t readThemperature"));
@@ -248,14 +274,12 @@ void readThemperature() {
   // request to all devices on the bus
   sensors.requestTemperatures(); // Send the command to get temperatures
   int themperature = (int)sensors.getTempC(sensorAddr);
-  if (themperature < 1)themperature = 1;
+  if (themperature < 1 && themperature > -60)themperature = 1;
   // set new data
-  voice.setSensorsData(themperature, motionCounter);
-#if DEBUG
-  Serial.println("\n\t t= " + String(themperature) + "; motion= " + String(motionCounter) + " ;");
-#endif
+  voice.setSensorsData(coolThemperature, themperature, motionCounter);
+  if(digitalRead(DUCT_PIN) == LOW)Serial.println("\n\t t= " + String(themperature) + "; motion= " + String(motionCounter) + " ;");
   if (themperature < coolThemperature && bitRead(flags, COOL_SEND_FLAG) == 1) {
-    Serial.println(F("\tStart send cool SMS"));
+    Serial.println(F("\tCall for send cool SMS"));
     bitSet(warningFlags, COOL_SMS);
   }
   if (themperature > coolThemperature && bitRead(warningFlags, COOL_SMS) == 1)bitClear(warningFlags, COOL_SMS);
@@ -265,7 +289,7 @@ void readThemperature() {
 /*
     send warnings sms
 */
-bool sendWarning( int warningType ) {
+bool sendWarning( uint8_t warningType ) {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));
   if (!modem.checkOnOK(0)) {
     // REBOOT on any wrong
@@ -284,6 +308,7 @@ bool sendWarning( int warningType ) {
   if (res == false)res = sms.sendWarningSms( ADMIN, warningType);
   modem.sendCommand(F("AT+GSMBUSY=0 \r"));
   modem.dropGSM();
+  Serial.println(" send sms result - " + String(res));
   return res;
 }
 
@@ -292,6 +317,7 @@ bool sendWarning( int warningType ) {
    handle emited of  the modem out
 */
 void handleModemMsg() {
+  Serial.println(F(" handleModemMSG"));
   uint8_t code, ret;
   char phone[13];
   ret = util.getTypeRequest();
@@ -365,14 +391,11 @@ void timer_handle_interrupts(int timer) {
   // wait delay for answer from modem
   if (delayEspired > 0 ) {
     delayEspired--;
-    // Serial.println("\n\nInside timer intr delayEspired = " + String(delayEspired) + "\n\n\n");
   }
-
-  //
 
   //  check sensors values
   checkSensors++;
-  if (checkSensors == CHECK_SENSOR_TICK  && digitalRead(VOLTAGE_PIN) == HIGH) {
+  if (checkSensors == CHECK_SENSOR_TICK) {
     bitSet(flags, CHECK_FLAG);
     checkSensors = 0;
   }
@@ -383,24 +406,30 @@ void timer_handle_interrupts(int timer) {
   if (dropMotionTimer > 0) dropMotionTimer--;
   else motionCounter = 0;
 
-  //     SEND SMS
+  //    ==========  SEND SMS  ================
   //  work with delay time beetwen send cool sms
-  if (bitRead(flags, COOL_SEND_FLAG) == 0)coolEspired ++;
-  if (coolEspired == DELAY_FOR_COOL) {
-    bitSet(flags, COOL_SEND_FLAG);
-    coolEspired = 0;
+  if (bitRead(flags, COOL_SEND_FLAG) == 0) {
+    coolEspired ++;
+    if (coolEspired == DELAY_FOR_COOL) {
+      bitSet(flags, COOL_SEND_FLAG);
+      coolEspired = 0;
+    }
   }
   //  work with delay time beetwen send motion sms
-  if (bitRead(flags, MOTION_SEND_FLAG) == 0)motionEspired ++;
-  if (motionEspired == DELAY_FOR_MOTION) {
-    bitSet(flags, MOTION_SEND_FLAG);
-    motionEspired = 0;
+  if (bitRead(flags, MOTION_SEND_FLAG) == 0) {
+    motionEspired ++;
+    if (motionEspired == DELAY_FOR_MOTION) {
+      bitSet(flags, MOTION_SEND_FLAG);
+      motionEspired = 0;
+    }
   }
   //  work with delay time beetwen send drop voltage sms
-  if (bitRead(flags, VOLTAGE_SEND_FLAG) == 0)voltageEspired ++;
-  if (voltageEspired == DELAY_FOR_VOLTAGE) {
-    bitSet(flags, VOLTAGE_SEND_FLAG);
-    voltageEspired = 0;
+  if (bitRead(flags, VOLTAGE_SEND_FLAG) == 0) {
+    voltageEspired ++;
+    if (voltageEspired == DELAY_FOR_VOLTAGE) {
+      bitSet(flags, VOLTAGE_SEND_FLAG);
+      voltageEspired = 0;
+    }
   }
 
   // blink on DUCT
