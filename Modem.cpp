@@ -8,18 +8,19 @@ Modem::Modem(SoftwareSerial *my) {
   gsm->begin(9600);
 }
 
-void Modem::changeShowCommand() {
-  isShowCommand = !isShowCommand;
-  Serial.println(F("\n\tCHANGE visibility command for modem\n"));
+void Modem::changeShowCommand(bool isShow) {
+  isShowCommand = isShow;
+  Serial.print(F("\n\tvisibility command = "));
+  Serial.println((isShow) ? "true" : "false");
 }
 
 void Modem::initModem() {
   digitalWrite(LED_PIN, HIGH);
   digitalWrite(RST_PIN, SIM_NO_RST);
   // start SIM900
-  setEspiredTime(DELAY_FOR_ANSWER);
+  setEspiredTime(250);
   char ch;
-  while (gsm->available() > 0  || delayEspired > 1) {
+  while (gsm->available() > 0  || delayEspired != 0) {
     if (gsm->available() > 0) {
       ch = gsm->read();
 #if DEBUG
@@ -29,25 +30,32 @@ void Modem::initModem() {
     if (ch == 'y')break;
     delay(1);
   }
-#if DEBUG
-  // Serial.println(" \nEnds of wait ");
-#endif
-  dropGSM();
-  sendCommand(F("ATE0 \r")); // echo off
-  sendCommand(F("ATV1 \r")); // out on echo off
-  sendCommand(F("AT+CMGF=1 \r")); // sms text mode
-  sendCommand(F("AT+CSCS=\"gsm\" \r")); // sms gsm charset
-  sendCommand(F("AT+CPBS=\"SM\" \r")); // set "SM" phonebook
-  sendCommand(F("AT+CLIP=1 \r")); // The calling line identity(auto get caller phone number
-  sendCommand(F("AT+CFSINIT \r")); //
-  delay(2000);
-  dropGSM();
-  digitalWrite(LED_PIN, LOW);
-#if DEBUG
-  Serial.println(F("\n\tsuccess Init\n"));
-#endif
-  delay(2000);
-  if (gsm->available() > 0) dropGSM();
+  if ( delayEspired == 0 ) {
+    // ------ if can`t get "call ready" answer then must make the reboot modem(SIM900) -------
+    if (isShowCommand)Serial.println(F("\n\tERROR [ can`t start SIM900 - try it reboot]\n"));
+    digitalWrite(RST_PIN, SIM_RST);
+    setEspiredTime(250);
+    while (delayEspired != 0) {}
+    rebootSIM();
+  }
+  else {
+    // ---------------------- on success get connect tune modem ---------------------------
+    if (isShowCommand) Serial.println(" \nEnds of wait ");
+    dropGSM();
+    sendCommand(F("ATE0 \r")); // echo off
+    sendCommand(F("ATV1 \r")); // out on echo off
+    sendCommand(F("AT+CMGF=1 \r")); // sms text mode
+    sendCommand(F("AT+CSCS=\"gsm\" \r")); // sms gsm charset
+    sendCommand(F("AT+CPBS=\"SM\" \r")); // set "SM" phonebook
+    sendCommand(F("AT+CLIP=1 \r")); // The calling line identity(auto get caller phone number
+    sendCommand(F("AT+CFSINIT \r")); //
+    delay(2000);
+    dropGSM();
+    delay(2000);
+    digitalWrite(LED_PIN, LOW);
+    Serial.println(F("\n\tsuccess Init\n"));
+    if (gsm->available() > 0) dropGSM();
+  }
 }
 
 
@@ -182,8 +190,7 @@ void Modem::rebootSIM(void) {
 */
 bool Modem::fillUCS2PhoneNumber(uint8_t clientNumber, char *phone) {
   dropGSM();
-  setFormatSms(UCS2_FORMAT);
-  if (checkOnOK(0) == false)return false;
+  if (setFormatSms(UCS2_FORMAT) == false)return false;
   String command = String("AT+CPBR=") + clientNumber + " \r ";
 #if DEBUG
   /*
@@ -367,5 +374,4 @@ bool Modem::setFormatSms( const char *format) {
   Serial.println(F("changed "));
 #endif
   return checkOnOK(DELAY_FOR_OK);
-
 }
