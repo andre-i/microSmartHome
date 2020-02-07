@@ -8,7 +8,8 @@ VoiceHandler::VoiceHandler(Modem *m) {
 }
 
 
-void VoiceHandler::setSensorsData( uint8_t themp, uint8_t motions) {
+void VoiceHandler::setSensorsData(uint8_t cool, int themp, uint8_t motions) {
+  coolThemperature = cool;
   themperature = themp;
   motionCounter = motions;
 
@@ -21,14 +22,19 @@ void VoiceHandler::setSensorsData( uint8_t themp, uint8_t motions) {
    else - make answer as themperature and motion
 */
 uint8_t VoiceHandler::handleIncoming(char *phone) {
-  #if DEBUG
+#if DEBUG
   Serial.println(F("Handle voice call"));
-  #endif
+#endif
   phone[0] = '\0';
-  if (digitalRead(BUTTON_PIN) == HIGH)return makeAnswer(true);
-  fillPhoneFromCall(phone);
-  makeAnswer(false); // head func is assign admin phone
-  return ASSIGN_ADMIN;
+  uint8_t ret;
+  if (digitalRead(BUTTON_PIN) == HIGH)ret = makeAnswer(true);
+  else {
+    fillPhoneFromCall(phone);
+    makeAnswer(false); // head func is assign admin phone
+    ret = ASSIGN_ADMIN;
+  }
+  modem->dropGSM();
+  return ret;
 }
 
 
@@ -66,7 +72,7 @@ uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
   modem->sendCommand(F("ATA \r"));
   modem->sendCommand(F("AT+VTD=20 \r"));
   modem->sendCommand(F("AT+VTS=\"1,4\",55 \r"));
-  if(!isSayThemperature){
+  if (!isSayThemperature) {
     retVal = playFile(GOOD_SOUND);
     modem->sendCommand(F("ATH \r"));
     return retVal;
@@ -78,12 +84,16 @@ uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
       retVal = playFile(fName);
     }
   }
+  if (digitalRead(VOLTAGE_PIN) == LOW) {
+    retVal = playFile(NO_VOLTAGE);
+    for (uint8_t i = 0; i < 3; i++)playFile((retVal == SUCCESS) ? CAT_SOUND : BAD_SOUND);
+  } 
   modem->sendCommand(F("ATH \r"));
   return retVal;
 }
 
 /*
-uint8_t VoiceHandler::sayThemperature() {
+  uint8_t VoiceHandler::sayThemperature() {
   modem->dropGSM();
   if (playFile(VAWE_SOUND) != SUCCESS)return NO_PLAY_SOUND;
   if (playFile(FIRING_SOUND) != SUCCESS)return NO_PLAY_SOUND;
@@ -104,29 +114,34 @@ uint8_t VoiceHandler::sayThemperature() {
   }
   if (themperature < MIN_FIRING_THEMPERATURE)return playFile(BAD_SOUND);
   return  playFile(GOOD_SOUND);
-}
+  }
 */
 uint8_t VoiceHandler::sayThemperature() {
   modem->dropGSM();
   playFile(VAWE_SOUND);
   playFile(FIRING_SOUND);
   String str;
-  if (themperature < 21) {
-    str = themperature + ".amr";
-    if (playFile(str.c_str()) != SUCCESS)return NO_PLAY_SOUND;
+  if (themperature < -60) {
+    playFile(THERMO_BAD);
+    for (uint8_t i = 0; i < 3; i++) playFile(CAT_SOUND);
   } else {
-    uint8_t tens = 2;
-    while ((themperature - tens * 10) > 9)tens++;
-    str = String(tens) + "0.amr";
-    playFile(str.c_str());
-    uint8_t ones = themperature - tens * 10;
-    if (ones != 0) {
-      str = String(ones) + ".amr";
+    if (themperature < 21) {
+      str = themperature + ".amr";
+      if (playFile(str.c_str()) != SUCCESS)return NO_PLAY_SOUND;
+    } else {
+      uint8_t tens = 2;
+      while ((themperature - tens * 10) > 9)tens++;
+      str = String(tens) + "0.amr";
       playFile(str.c_str());
+      uint8_t ones = themperature - tens * 10;
+      if (ones != 0) {
+        str = String(ones) + ".amr";
+        playFile(str.c_str());
+      }
     }
   }
   delayForPlay();
-  if (themperature < MIN_FIRING_THEMPERATURE)return playFile(BAD_SOUND);
+  if (themperature < coolThemperature)return playFile(BAD_SOUND);
   return  playFile(GOOD_SOUND);
 }
 
@@ -140,12 +155,12 @@ uint8_t VoiceHandler::sayThemperature() {
    return NO_PLAY_SOUND in any error
 */
 uint8_t VoiceHandler::playFile(const char *fileName) {
-  #if DEBUD
-      Serial.print(" Try play file : ");
-      Serial.println(fileName);
-   #endif
+#if DEBUD
+  Serial.print(" Try play file : ");
+  Serial.println(fileName);
+#endif
   delay(10);
-  while(modem->available() > 0){
+  while (modem->available() > 0) {
     modem->read();
     delay(1);
   }
@@ -160,5 +175,5 @@ uint8_t VoiceHandler::playFile(const char *fileName) {
 
 void VoiceHandler::delayForPlay() {
   setEspiredTime(DELAY_FOR_SOUND);
-  while ( modem->available() < 2 && delayEspired > 0)delay(1);
+  while ( modem->available() < 2 && delayEspired > 0){};
 }
