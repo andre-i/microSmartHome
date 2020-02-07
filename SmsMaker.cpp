@@ -1,5 +1,4 @@
 
-
 #include "SmsMaker.h"
 
 extern volatile uint8_t delayEspired;
@@ -13,9 +12,10 @@ SmsMaker::SmsMaker(Modem *m) {
     messageType : COOL, MOTION, VOLTAGE
 */
 bool SmsMaker::sendWarningSms(uint8_t clientOrder, int messageType) {
-#if DEBUG
-  Serial.println(F("sendWarningSms"));
-#endif
+  if (digitalRead(DUCT_PIN) == LOW) {
+    Serial.print(F(" try send_WarningSms for client"));
+    Serial.print(String(clientOrder) + " msgTYPE=" + String(messageType));
+  }
   char mess[MAX_MESS_LEN];
   char phone[49];
   if (modem->fillUCS2PhoneNumber(clientOrder, phone) == false) {
@@ -61,6 +61,7 @@ bool SmsMaker::sendInfoSms() {
       if ( i == 1)return false;
     }
     answ += '#';
+    //write current value for cool themperature
     if (i == COOL_THEMPERATURE_RECORD)answ += 'T';
     else answ += i;
     answ += '#';
@@ -71,6 +72,8 @@ bool SmsMaker::sendInfoSms() {
     j = 0;
     answ += "#\n";
   }
+  //  on drop out voltage add it by info
+  if (digitalRead(VOLTAGE_PIN) == 0) answ += "# 0 Volt #\n";
   if (modem->fillGSMPhone(1, phone) == false)return false;
   return sendSms("GSM\0" , phone, (char*)answ.c_str());
 }
@@ -103,11 +106,11 @@ bool SmsMaker::sendSms( char *smsFormat, char *phone, char *text) {
     modem->dropGSM();
     return true;
   */
+#endif
   if (digitalRead(DUCT_PIN) == LOW) {
-    Serial.println(F("DEBUG mode emulator: set SMS true"));
+    Serial.println(F("  DEBUG mode emulator: set SMS true"));
     return true;
   }
-#endif
   if (!setSmsFormat(smsFormat)) {
 #if DEBUG
     // Serial.print(F(" err - can`t set format"));
@@ -116,7 +119,7 @@ bool SmsMaker::sendSms( char *smsFormat, char *phone, char *text) {
   }
   modem->print("OK \r");
   // REBOOT if any wrong
-  if(!modem->checkOnOK(0)){
+  if (!modem->checkOnOK(0)) {
     modem->rebootSIM();
     Serial.println(F("WARNING: [ rebootSIM before send sms ]"));
   }
@@ -138,7 +141,7 @@ bool SmsMaker::sendSms( char *smsFormat, char *phone, char *text) {
   modem->write('\r');
   modem->flush();
 #if DEBUG
-  Serial.print(F("SMS send : "));
+  Serial.print(F(" SMS send : "));
 #endif
   setEspiredTime(DELAY_FOR_ANSWER);
   while (modem->available() < 3 && delayEspired != 0)delay(5);
