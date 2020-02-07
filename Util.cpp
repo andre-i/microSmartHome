@@ -21,6 +21,10 @@ uint8_t Util::getTypeRequest(void) {
   req[12] = '\0';
   if ( strstr( req, "RING") != NULL)return INC_CALL;
   if (strstr( req, "+CMTI") != NULL)return INC_SMS;
+  Serial.print(F("\n\tWARNING: undefined modem MSG\n get from modem [ "));
+  Serial.print(req);
+  while (modem->available() > 0)Serial.write(modem->read());
+  Serial.println(" ]\n");
   return UNDEFINED;
 }
 
@@ -114,14 +118,15 @@ uint8_t Util::handleIncomingSms() {
     }
     else ret =  WRONG_USER;
   } else {
-    #if DEBUG
-    while(modem->available()>0)Serial.write(modem->read());
-    Serial.println();
-    #endif
+    if (digitalRead(DUCT_PIN) == LOW) {
+      Serial.print(F("DEBUG: it is not SMS - "));
+      while (modem->available() > 0)Serial.write(modem->read());
+      Serial.println();
+    }
     ret = IS_EMPTY;
   }
   modem->dropGSM();
-  modem->sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
+  if(ret != IS_EMPTY)modem->sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
   modem->dropGSM();
   return ret;
 }
