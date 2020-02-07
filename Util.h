@@ -4,7 +4,6 @@
 
 #include <Arduino.h>
 #include "Constants.h"
-//#include "AtCommands.h"
 #include "Modem.h"
 
 class Util {
