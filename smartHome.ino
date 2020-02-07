@@ -2,10 +2,10 @@
 /*
      PIN description
      D2(2) - motion sensor
-     D3(3) - RX
-     D4(4) - TX
+     D3(3) - RX (SoftwareSerial)
+     D4(4) - TX (SoftwareSerial)
      D5(5) - button pin
-     D6(6) - button pin
+     D6(6) - duct pin
      D7(7) - DDS18B20 pin( ONE_WIRE )
 
      D9(9) - reset for SIM900
@@ -25,9 +25,10 @@
      format answers: #1#...admin-phone...#
                      #2#..client2-phone..#
                      #3#..client3-phone..#
+                     #T=...#
    phone - International number type (starts with '+' and have 11 digits)
-     client 2 and client3 can`t mandatory
-
+   client 2 and client3 can`t mandatory
+   T=...  - themperature for send cool firing sms  
 
 */
 
@@ -45,7 +46,7 @@
 #include "Util.h"
 
 // redifene max buffer for SoftwareSerial otherwice
-//  can`t set request to server(small buffer size
+//  can`t set request (small buffer size)
 #define _SS_MAX_RX_BUFF 128
 
 /*  -- THEMPERATURE  --  */
@@ -91,10 +92,9 @@ uint8_t volatile delayEspired = 0;
 uint8_t coolThemperature = MIN_FIRING_THEMPERATURE;
 
 // work MODE
+//  work normally - worked device(DUCT_PIN not pressed)
 //  duct - pipe beetwen serial and modem
 //  test - no send sms
-//  work - normally worked device
-//        DUCT_PIN not pressed
 enum modes { DUCT = false, TEST = true};
 bool mode = DUCT;
 
@@ -112,7 +112,6 @@ void setup() {
   digitalWrite(RST_PIN, SIM_RST);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  // alarm
   //motion sensor
   pinMode(MOTION_SENSOR_PIN, INPUT);
   digitalWrite(MOTION_SENSOR_PIN, LOW);
@@ -120,10 +119,8 @@ void setup() {
   pinMode(VOLTAGE_PIN, INPUT);
 
   /*  ISR   */
-
   // timer 2 intr handler freq=1Hz, period=1s
   timer_init_ISR_1Hz(TIMER_DEFAULT);
-
   //  start up the motion sensor handler - external intr
   attachInterrupt(digitalPinToInterrupt(MOTION_SENSOR_PIN), motion_sensor_INTR_handler, RISING);
 
@@ -139,7 +136,8 @@ void setup() {
     printAddress(sensorAddr);
     }
   */
-
+  // delay before start listen sensors
+  // it need go on pipl out sensors
   setEspiredTime(250);
   while (delayEspired != 0) {
     if (delayEspired % 8 == 0) {
@@ -157,7 +155,7 @@ void setup() {
 #if DEBUG
   Serial.println("COOL themperature = " + String(coolThemperature));
 #endif
-  readThemperature();
+  executeScheduledTask();
 }
 
 void loop() {
@@ -189,15 +187,17 @@ void loop() {
     }
 
     // ---------------  check themperature  -----------------
-    if (bitRead(flags, CHECK_FLAG) == 1)readThemperature();
+    if (bitRead(flags, CHECK_FLAG) == 1)executeScheduledTask();
 
     // ------------  LISTEN MODEM  ----------------------
     if (modem.available() > 0) handleModemMsg();
-
+    
+    // after wait time motion counter be dropped and drop send motion sms
     if(motionCounter == 0 && bitRead(warningFlags, MOTION_SMS) == 1){
       bitClear(warningFlags, MOTION_SMS);
     }
   }
+    // flip beetwen DUCT and no sms modes
   if (digitalRead(BUTTON_PIN) == LOW && digitalRead(DUCT_PIN)  == LOW)buttonHandle();
 }
 
@@ -222,7 +222,12 @@ void loop() {
 */
 
 /*
-   on click Button change reflect modem command
+   on click Button change mode and
+   reflect current mode
+   DUCT - arduino work as pipe beetwen modem amd computer
+   TEST - no sms send mode( device check sensors and execute all actions
+            as normally work exclude sms send). Also in this mode groowe
+            debug messages
 */
 void buttonHandle() {
   delay(20);
@@ -255,9 +260,9 @@ void setEspiredTime(uint8_t delayTime) {
    if themperature small than MIN_FIRING_THEMPERATURE
     call func for send warning sms
 */
-void readThemperature() {
+void executeScheduledTask() {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));
-  if (digitalRead(DUCT_PIN) == HIGH)digitalWrite(LED_PIN, LOW);
+  if (digitalRead(DUCT_PIN) == HIGH)digitalWrite(LED_PIN, LOW);// off led
 #if DEBUG
   Serial.print(F("\n\t readThemperature"));
 #endif
@@ -288,6 +293,7 @@ void readThemperature() {
 
 /*
     send warnings sms
+    types is COOL=0, MOTION=1, VOLTAGE=2
 */
 bool sendWarning( uint8_t warningType ) {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));
@@ -320,7 +326,7 @@ void handleModemMsg() {
   Serial.println(F(" handleModemMSG"));
   uint8_t code, ret;
   char phone[13];
-  ret = util.getTypeRequest();
+  ret = util.getTypeRequest();// compute type request from modem output
   switch (ret) {
     case INC_SMS:
       code = handleSms();
@@ -345,14 +351,14 @@ void handleModemMsg() {
     handle sms if it is
 */
 uint8_t handleSms() {
-  modem.sendCommand(F("AT+GSMBUSY=1 \r"));
+  modem.sendCommand(F("AT+GSMBUSY=1 \r"));// send busy for all caller
   modem.dropGSM();
   uint8_t code = util.handleIncomingSms();
   if (code == SEND_INFO_SMS) {
     sms.sendInfoSms();
   }
   if (code == SET_COOL_THEMPERATURE_RECORD)coolThemperature = util.getCoolThemperature();
-  modem.sendCommand(F("AT+GSMBUSY=0 \r"));
+  modem.sendCommand(F("AT+GSMBUSY=0 \r"));// ready make answers for caller
   modem.dropGSM();
   return code;
 }
@@ -366,15 +372,19 @@ uint8_t handleSms() {
 
 /*
   ISR handler for interrupt maked from motion sensor signals
+  after wait time motion be set init state in timer handler
 */
 void motion_sensor_INTR_handler(void) {
-  dropMotionTimer = DROP_MOTION_TIME;
+  dropMotionTimer = DROP_MOTION_TIME;   // start wait for drop motion counter
   if (bitRead(flags, MOTION_SEND_FLAG) == 1 )bitSet(warningFlags, MOTION_SMS);
   if (motionCounter < 6) motionCounter++;
   else motionCounter = 1 ;
 }
 
-
+/*
+    timer handler
+    execute some shedule tasks
+*/
 void timer_handle_interrupts(int timer) {
   //   inner variables
   static uint16_t timerCounter;
@@ -436,6 +446,7 @@ void timer_handle_interrupts(int timer) {
   if (digitalRead(DUCT_PIN) == LOW) digitalWrite( LED_PIN, !digitalRead(LED_PIN));
 
   //  WDT soft reset after 4 timerCounter loop
+    //  device make restart after ~ 2 days work
   timerCounter ++;
   if (timerCounter == 43200) {
     loopCounter++;
@@ -452,6 +463,7 @@ void timer_handle_interrupts(int timer) {
 #if DEBUG
   //  WARNING - this action is only debug and may be leave to brokem programm work
   // it work wery randomly
+    // purpose this chunk - fast call sms handler
   // if(timerCounter == 20) handleSms();
 #endif
 }
