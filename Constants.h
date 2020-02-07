@@ -16,7 +16,6 @@
 #define RX_PIN   3
 #define TX_PIN  4
 
-
 // Pin for One wire
 #define ONE_WIRE_BUS    7
 // ----- motion sensors ----
@@ -33,12 +32,13 @@
 // reset
 #define RST_PIN    9
 
+
 // ----  check sensors time
 //       and it is  send data to Thingspeak signal----
 #if DEBUG==0
-#define CHECK_SENSOR_TICK 300
+#define CHECK_SENSOR_TICK 180
 #else
-#define CHECK_SENSOR_TICK 160
+#define CHECK_SENSOR_TICK 60
 #endif
 
 // audio files
@@ -49,6 +49,8 @@
 #define GOOD_SOUND "good.amr"
 #define VAWE_SOUND "vawe.amr"
 #define CAT_SOUND "cat.amr"
+#define THERMO_BAD "termoBad.amr"
+#define NO_VOLTAGE "noVoltage.amr"
 
 //   delays beetwen send sms
 #define DELAY_FOR_VOLTAGE  32400  // 9 hour beetwen send outer voltage is noll (0v)
@@ -112,12 +114,7 @@ const char *const messages[] PROGMEM = { cool, motion, voltage };
 enum { COOL, MOTION, VOLTAGE };
 
 //  PUBLIC FUNCTIONS
+//  need for wait of the answer from modem
 void setEspiredTime(uint8_t delayTime);
-
-
-
-
-
-
 
 #endif
