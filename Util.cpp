@@ -62,27 +62,31 @@ uint8_t Util::writeClientPhone(uint8_t clientNumber, char *phone) {
     Serial.write(phone[i]);
     i++;
   }
-  Serial.print(" ] return :");
+  Serial.print(" ] ");
   ret = SUCCESS;
 #endif
+    modem->dropGSM();
   if (modem->setFormatSms(GSM_FORMAT)) {
-    delay(2);
+    delay(20);
+    modem->dropGSM();
     modem->print("AT+CPBW=" + String(clientNumber) + ",\"");
     writeCharsArr(phone);
     if (clientNumber < COOL_THEMPERATURE_RECORD) {
       modem->print("\",145,\"");
       writeCharsArr(phone);
-      modem->print("\" \r");
+      modem->println("\" \r");
     }
     else {
-      modem->print("\",129,\"innerAppData\" \r");
+      if ( clientNumber == COOL_THEMPERATURE_RECORD) modem->println("\",129,\"coolThemp\" \r");
+      if ( clientNumber == IS_SEND_MOTION_RECORD) modem->println("\",129,\"sendMotion\" \r");
     }
     modem->flush();
+    delay(20);
     if (modem->checkOnOK(0)) ret =  SUCCESS;
     else ret = WRONG_TASK;
   }
 #if DEBUG
-  Serial.println(ret);
+  Serial.println(" return "+ String(ret));
 #endif
   return ret;
 }
@@ -119,9 +123,9 @@ uint8_t Util::handleIncomingSms() {
     else ret =  WRONG_USER;
   } else {
     if (digitalRead(DUCT_PIN) == LOW) {
-      Serial.print(F("DEBUG: it is not SMS - "));
+      Serial.print(F("DEBUG: it is not SMS - content("));
       while (modem->available() > 0)Serial.write(modem->read());
-      Serial.println();
+      Serial.println(")");
     }
     ret = IS_EMPTY;
   }
@@ -167,7 +171,11 @@ uint8_t Util::executeRequest(void) {
   char ch;
   uint8_t clientNumber;
   Serial.print(F("  Execute incoming command "));
-  while ( modem->available() > 0 && modem->read() != '#')delay(1);
+  while ( modem->available() > 0 && (ch = modem->read()) != '#') {
+    delay(1);
+    Serial.write(ch);
+  }
+  Serial.println();
   if (modem->available() == 0)return WRONG_TASK;
   ch = modem->read();
   if (ch == 'T' || ch == 't') {
@@ -180,7 +188,7 @@ uint8_t Util::executeRequest(void) {
     return ret;
   }
   if ( ch == 'M' || ch == 'm')return setIsMotion();
-  if (ch != 'w' && ch != 'W')return SEND_INFO_SMS;
+  if (ch != 'w' && ch != 'W') return SEND_INFO_SMS;
   if (modem->read() != '#')return WRONG_TASK;
   if (modem->available() > 0)ch = modem->read();
   if ( ch != '1' && ch != '2' && ch != '3')return WRONG_TASK;
@@ -209,25 +217,32 @@ bool Util::checkOnIncomingSms() {
 }
 
 uint8_t Util::setIsMotion() {
+#if DEBUG
+  Serial.print(F(" wtite isMotion "));
+#endif
   char ch;
   char isSend[2];
   isSend[1] = '\0';
+  if( modem->read() != '#'){
+    Serial.println(F("fail send motion"));
+    return WRONG_DATA;
+  }
   ch = modem->read();
-  if ( ch == 'Y' || ch == 'y' )isSend[0] = 'y';
-  else  isSend[0] = 'n';
-  if( writeClientPhone(IS_SEND_MOTION_RECORD, isSend) != SUCCESS)return RETURN_ERROR;
+  if ( ch == 'Y' || ch == 'y' )isSend[0] = '1';
+  else  isSend[0] = '0';
+  if ( writeClientPhone(IS_SEND_MOTION_RECORD, isSend) != SUCCESS)return RETURN_ERROR;
   WDT_Reset();
   return SUCCESS;
 }
 
-uint8_t Util::isSendMotionSMS(){
+uint8_t Util::isSendMotionSMS() {
   return modem->isSendMotion();
 }
 
 
 /*
- *  2 methods for  work with cool themperature
- */
+    2 methods for  work with cool themperature
+*/
 
 uint8_t Util::setCoolThemperature() {
 #if DEBUG
@@ -271,13 +286,13 @@ uint8_t Util::getCoolThemperature() {
 }
 
 /*
- *  reset Arduino after set new values for 
- * 1) cool themperature or 
- * 2) change send motion sms state
- */
-void Util::WDT_Reset(){
-      digitalWrite(RST_PIN, LOW);
-      delay(9000);
-      wdt_enable(WDTO_8S);//  REBOOT the device after 8 seconds
-      Serial.println(F("\n___________________________\n\t RESET ON CHANGE PARAMETERS \n___________________________"));
+    reset Arduino after set new values for
+   1) cool themperature or
+   2) change send motion sms state
+*/
+void Util::WDT_Reset() {
+  digitalWrite(RST_PIN, LOW);
+  delay(9000);
+  wdt_enable(WDTO_8S);//  REBOOT the device after 8 seconds
+  Serial.println(F("\n___________________________\n\t RESET ON CHANGE PARAMETERS \n___________________________"));
 }
