@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include "Constants.h"
 #include "Modem.h"
+#include <avr/wdt.h>
 
 class Util {
   public:
@@ -22,5 +23,8 @@ class Util {
     uint8_t executeRequest(void);
     void writeCharsArr(char *arr);
     uint8_t setCoolThemperature();
+    uint8_t setIsMotion();
+    uint8_t isSendMotionSMS();
+    void WDT_Reset();
 };
 #endif
