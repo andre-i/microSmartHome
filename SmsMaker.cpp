@@ -78,6 +78,8 @@ bool SmsMaker::sendInfoSms() {
   //  on drop out voltage add it by info
   if (digitalRead(VOLTAGE_PIN) == 0) answ += "# 0 Volt #\n";
   if (modem->fillGSMPhone(1, phone) == false)return false;
+  Serial.print("Try send sms :");
+  Serial.println(answ);
   return sendSms("GSM\0" , phone, (char*)answ.c_str());
 }
 
