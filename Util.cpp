@@ -176,6 +176,7 @@ uint8_t Util::executeRequest(void) {
       Serial.print(F("\n  ERROR - can`t set cool themperature CODE = "));
       Serial.println(ret);
     }
+    WDT_Reset(); // RESET ON SUCCESS write cool themperature
     return ret;
   }
   if ( ch == 'M' || ch == 'm')return setIsMotion();
@@ -250,7 +251,6 @@ uint8_t Util::setCoolThemperature() {
   Serial.print(F("SUCCESS t = "));
   Serial.println(themp);
 #endif
-  WDT_Reset(); // RESET ON SUCCESS write cool themperature
   return SET_COOL_THEMPERATURE_RECORD;
 }
 
