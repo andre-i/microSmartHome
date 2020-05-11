@@ -15,6 +15,7 @@ class Util {
     bool assignAdmin(char *phone);
     bool checkOnIncomingSms();
     uint8_t getCoolThemperature();
+    uint8_t isSendMotionSMS();
 
   private:
     Modem *modem;
@@ -24,7 +25,6 @@ class Util {
     void writeCharsArr(char *arr);
     uint8_t setCoolThemperature();
     uint8_t setIsMotion();
-    uint8_t isSendMotionSMS();
     void WDT_Reset();
 };
 #endif
