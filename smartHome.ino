@@ -1,4 +1,14 @@
+/*
+    VERSION
+    v_06
+       fix set duct mode after reset Arduino
+        1)set 3 mode(test, duct, work)
+        2)add change mode for set Motion warning sms
+        3)add reset Arduino after change cool themperature or change motion mode
+        4) add by info sms mode for send motion sms
+ */
 
+ 
 /*
      PIN description
      D2(2) - motion sensor
@@ -13,7 +23,7 @@
 */
 
 /*
-  sYSTEM work with 3 clients maximum. First client is admin - it have rights on change
+  System work with 3 clients maximum. First client is admin - it have rights on change
   phones clients
     admin SMS pattern
   1) change client phone -  #w#num#..phone..#
@@ -26,10 +36,14 @@
                      #2#..client2-phone..#
                      #3#..client3-phone..#
                      #T=...#
+                     #Motion mode : (SEND or NO_SEND) #
    phone - International number type (starts with '+' and have 11 digits)
    client 2 and client3 can`t mandatory
-   T=...  - themperature for send cool firing sms  
-
+   T=...  - themperature for send cool firing sms
+  4) for whether send motion warning sms - #My# or #Mn#
+              #My# - motion sms be send
+              #Mn# - motion sms no send
+  Warning : after set new values arduino make reset
 */
 
 // Include the libraries we need
@@ -91,12 +105,15 @@ uint8_t volatile delayEspired = 0;
 // temperature
 uint8_t coolThemperature = MIN_FIRING_THEMPERATURE;
 
+// send SMS on motion
+uint8_t isSendMotion = NO_SEND_SMS;
+
 // work MODE
 //  work normally - worked device(DUCT_PIN not pressed)
 //  duct - pipe beetwen serial and modem
 //  test - no send sms
-enum modes { DUCT = false, TEST = true};
-bool mode = DUCT;
+enum modes { DUCT = 0, TEST = 1, WORK = 2};
+uint8_t mode = WORK;
 
 
 
@@ -105,7 +122,7 @@ void setup() {
   wdt_disable();
   // start up serial port`s
   Serial.begin(9600);
-  Serial.println(F("\n\tStart_Smart_Home_Apps v_0.05\n"));
+  Serial.println(F("\n\tStart_Smart_Home_Apps v_06\n"));
   // prepare device for write admin phone tophonebook
   // SIM
   pinMode(RST_PIN, OUTPUT);
@@ -138,13 +155,15 @@ void setup() {
   */
   // delay before start listen sensors
   // it need go on pipl out sensors
-  setEspiredTime(250);
-  while (delayEspired != 0) {
+  /*
+    setEspiredTime(250);
+    while (delayEspired != 0) {
     if (delayEspired % 8 == 0) {
       Serial.print(F(" tick"));
       delay(1000);
     }
-  }
+    }
+  */
   delay(4000);
   Serial.println(F("\n  START WATCH !!!\n"));
   modem.initModem();  // init sim module
@@ -191,13 +210,13 @@ void loop() {
 
     // ------------  LISTEN MODEM  ----------------------
     if (modem.available() > 0) handleModemMsg();
-    
+
     // after wait time motion counter be dropped and drop send motion sms
-    if(motionCounter == 0 && bitRead(warningFlags, MOTION_SMS) == 1){
+    if (motionCounter == 0 && bitRead(warningFlags, MOTION_SMS) == 1) {
       bitClear(warningFlags, MOTION_SMS);
     }
   }
-    // flip beetwen DUCT and no sms modes
+  // flip beetwen DUCT and no sms modes
   if (digitalRead(BUTTON_PIN) == LOW && digitalRead(DUCT_PIN)  == LOW)buttonHandle();
 }
 
@@ -238,10 +257,18 @@ void buttonHandle() {
     delay(20);
   }
   if (pressCounter > 2 ) {
-    mode = !mode;
+    Serial.print("\n ___ mode : ");
+    switch (mode) {
+      case DUCT: mode = TEST; Serial.println("TEST");
+        break;
+      case TEST: mode = WORK ; Serial.println("WORK");
+        break;
+      case WORK: mode = DUCT; Serial.println("DUCT");
+      default:
+        Serial.println(" ___");
+    }
     modem.changeShowCommand(mode);
   }
-  Serial.println(mode ? "\n_MODE TEST_" : "\n_MODE DUCT_");
   while (digitalRead(BUTTON_PIN) == LOW) {}
 }
 
@@ -282,7 +309,7 @@ void executeScheduledTask() {
   if (themperature < 1 && themperature > -60)themperature = 1;
   // set new data
   voice.setSensorsData(coolThemperature, themperature, motionCounter);
-  if(digitalRead(DUCT_PIN) == LOW)Serial.println("\n\t t= " + String(themperature) + "; motion= " + String(motionCounter) + " ;");
+  if (digitalRead(DUCT_PIN) == LOW)Serial.println("\n\t t= " + String(themperature) + "; motion= " + String(motionCounter) + " ;");
   if (themperature < coolThemperature && bitRead(flags, COOL_SEND_FLAG) == 1) {
     Serial.println(F("\tCall for send cool SMS"));
     bitSet(warningFlags, COOL_SMS);
@@ -446,15 +473,20 @@ void timer_handle_interrupts(int timer) {
   if (digitalRead(DUCT_PIN) == LOW) digitalWrite( LED_PIN, !digitalRead(LED_PIN));
 
   //  WDT soft reset after 4 timerCounter loop
-    //  device make restart after ~ 2 days work
+  //  device make restart after ~ 2 days work
   timerCounter ++;
+#if DEBUG == 0
   if (timerCounter == 43200) {
+#else
+  if (timerCounter == 100) {
+#endif
     loopCounter++;
     timerCounter = 0;
     if (loopCounter == 4) {
+      digitalWrite(RST_PIN, LOW);
+      delay(9000);
       //  REBOOT the device after 2 days work
       wdt_enable (WDTO_8S);
-      digitalWrite(RST_PIN, LOW);
       Serial.println(F("\n___________________________\n\tAFTER 8 seconds to be RESET\n___________________________"));
       delay(9000);
 
@@ -463,7 +495,7 @@ void timer_handle_interrupts(int timer) {
 #if DEBUG
   //  WARNING - this action is only debug and may be leave to brokem programm work
   // it work wery randomly
-    // purpose this chunk - fast call sms handler
+  // purpose this chunk - fast call sms handler
   // if(timerCounter == 20) handleSms();
 #endif
 }
