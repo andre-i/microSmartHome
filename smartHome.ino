@@ -122,11 +122,12 @@ void setup() {
   wdt_disable();
   // start up serial port`s
   Serial.begin(9600);
-  Serial.println(F("\n\tStart_Smart_Home_Apps v_06\n"));
-  // prepare device for write admin phone tophonebook
+  Serial.println(F("\n\tStart_Smart_Home_Apps v_06\n")); 
   // SIM
   pinMode(RST_PIN, OUTPUT);
   digitalWrite(RST_PIN, SIM_RST);
+  delay(9000);
+  // led
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
   //motion sensor
@@ -134,7 +135,9 @@ void setup() {
   digitalWrite(MOTION_SENSOR_PIN, LOW);
   //  check outer voltage
   pinMode(VOLTAGE_PIN, INPUT);
-
+  // init params
+  isSendMotion = util.isSendMotionSMS();
+  coolThemperature = util.getCoolThemperature();
   /*  ISR   */
   // timer 2 intr handler freq=1Hz, period=1s
   timer_init_ISR_1Hz(TIMER_DEFAULT);
@@ -153,23 +156,11 @@ void setup() {
     printAddress(sensorAddr);
     }
   */
-  // delay before start listen sensors
-  // it need go on pipl out sensors
-  /*
-    setEspiredTime(250);
-    while (delayEspired != 0) {
-    if (delayEspired % 8 == 0) {
-      Serial.print(F(" tick"));
-      delay(1000);
-    }
-    }
-  */
   delay(4000);
   Serial.println(F("\n  START WATCH !!!\n"));
   modem.initModem();  // init sim module
   motionCounter = 0;
   bitClear(warningFlags, MOTION_SMS);
-  coolThemperature = util.getCoolThemperature();
   flags = 0b11100000;
 #if DEBUG
   Serial.println("COOL themperature = " + String(coolThemperature));
@@ -194,7 +185,7 @@ void loop() {
     }
     // motion
     if (bitRead(warningFlags, MOTION_SMS) == 1
-        && bitRead(flags, MOTION_SEND_FLAG) == 1) {
+        && bitRead(flags, MOTION_SEND_FLAG) == 1 && isSendMotion == SEND_SMS ) {
       Serial.println(F("Start send motion warning sms"));
       if (sendWarning(MOTION)) bitClear(flags, MOTION_SEND_FLAG);
     }
@@ -405,7 +396,6 @@ void motion_sensor_INTR_handler(void) {
   dropMotionTimer = DROP_MOTION_TIME;   // start wait for drop motion counter
   if (bitRead(flags, MOTION_SEND_FLAG) == 1 )bitSet(warningFlags, MOTION_SMS);
   if (motionCounter < 6) motionCounter++;
-  else motionCounter = 1 ;
 }
 
 /*
