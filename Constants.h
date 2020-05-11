@@ -20,7 +20,7 @@
 #define ONE_WIRE_BUS    7
 // ----- motion sensors ----
 #define MOTION_SENSOR_PIN  2
-#define DROP_MOTION_TIME 600
+#define DROP_MOTION_TIME 900
 // ---- signals led  ----
 #define LED_PIN   13
 // -----  voltage pin
@@ -31,10 +31,11 @@
 #define MIN_PRESSED_COUNT 6
 // reset
 #define RST_PIN    9
+// hard reset - SIM900 POWER OFF
+#define SIM_RST     LOW  //  sim900 power reset level 0 - reset
+#define SIM_NO_RST  HIGH //  level 1 - in work
 
-
-// ----  check sensors time
-//       and it is  send data to Thingspeak signal----
+// ----  check sensors time  ----
 #if DEBUG==0
 #define CHECK_SENSOR_TICK 180
 #else
@@ -65,6 +66,9 @@
 #define GSM_FORMAT "GSM"
 #define UCS2_FORMAT "UCS2"
 
+// send SMS
+#define SEND_SMS 1
+#define NO_SEND_SMS 0
 /* =======================CONSTANTS========================== */
 
 // return codes
@@ -89,6 +93,7 @@ enum clients {
   CLIENT1 = 2,
   CLIENT2 = 3,
   COOL_THEMPERATURE_RECORD = 4,
+  IS_SEND_MOTION_RECORD = 5,
 };
 
 // types modem requests
