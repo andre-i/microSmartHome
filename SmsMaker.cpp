@@ -72,6 +72,9 @@ bool SmsMaker::sendInfoSms() {
     j = 0;
     answ += "#\n";
   }
+  // add send motion mode
+  answ += "#Motion mode: ";
+  answ += (modem->isSendMotion() == SEND_SMS) ? "SEND#\n" : "NO_SEND#\n";
   //  on drop out voltage add it by info
   if (digitalRead(VOLTAGE_PIN) == 0) answ += "# 0 Volt #\n";
   if (modem->fillGSMPhone(1, phone) == false)return false;
