@@ -75,7 +75,7 @@ uint8_t Util::writeClientPhone(uint8_t clientNumber, char *phone) {
       modem->print("\" \r");
     }
     else {
-      modem->print("\",129,\"minCoolThemp\" \r");
+      modem->print("\",129,\"innerAppData\" \r");
     }
     modem->flush();
     if (modem->checkOnOK(0)) ret =  SUCCESS;
@@ -126,7 +126,7 @@ uint8_t Util::handleIncomingSms() {
     ret = IS_EMPTY;
   }
   modem->dropGSM();
-  if(ret != IS_EMPTY)modem->sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
+  if (ret != IS_EMPTY)modem->sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
   modem->dropGSM();
   return ret;
 }
@@ -178,6 +178,7 @@ uint8_t Util::executeRequest(void) {
     }
     return ret;
   }
+  if ( ch == 'M' || ch == 'm')return setIsMotion();
   if (ch != 'w' && ch != 'W')return SEND_INFO_SMS;
   if (modem->read() != '#')return WRONG_TASK;
   if (modem->available() > 0)ch = modem->read();
@@ -206,6 +207,27 @@ bool Util::checkOnIncomingSms() {
   return modem->available() > 35;
 }
 
+uint8_t Util::setIsMotion() {
+  char ch;
+  char isSend[2];
+  isSend[1] = '\0';
+  ch = modem->read();
+  if ( ch == 'Y' || ch == 'y' )isSend[0] = 'y';
+  else  isSend[0] = 'n';
+  if( writeClientPhone(IS_SEND_MOTION_RECORD, isSend) != SUCCESS)return RETURN_ERROR;
+  WDT_Reset();
+  return SUCCESS;
+}
+
+uint8_t Util::isSendMotionSMS(){
+  return modem->isSendMotion();
+}
+
+
+/*
+ *  2 methods for  work with cool themperature
+ */
+
 uint8_t Util::setCoolThemperature() {
 #if DEBUG
   Serial.print(F(" wtite cool_themperature "));
@@ -228,6 +250,7 @@ uint8_t Util::setCoolThemperature() {
   Serial.print(F("SUCCESS t = "));
   Serial.println(themp);
 #endif
+  WDT_Reset(); // RESET ON SUCCESS write cool themperature
   return SET_COOL_THEMPERATURE_RECORD;
 }
 
@@ -245,4 +268,16 @@ uint8_t Util::getCoolThemperature() {
   else T = (themp[0] - 48) * 10 + (themp[1] - 48);
   if ( T < 1 || T > 99)return MIN_FIRING_THEMPERATURE;
   return T;
+}
+
+/*
+ *  reset Arduino after set new values for 
+ * 1) cool themperature or 
+ * 2) change send motion sms state
+ */
+void Util::WDT_Reset(){
+      digitalWrite(RST_PIN, LOW);
+      delay(9000);
+      wdt_enable(WDTO_8S);//  REBOOT the device after 8 seconds
+      Serial.println(F("\n___________________________\n\t RESET ON CHANGE PARAMETERS \n___________________________"));
 }
