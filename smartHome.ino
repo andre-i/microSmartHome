@@ -41,8 +41,8 @@
    client 2 and client3 can`t mandatory
    T=...  - themperature for send cool firing sms
   4) for whether send motion warning sms - #My# or #Mn#
-              #My# - motion sms be send
-              #Mn# - motion sms no send
+              #M#y# - motion sms be send
+              #M#n# - motion sms no send
   Warning : after set new values arduino make reset
 */
 
@@ -122,7 +122,7 @@ void setup() {
   wdt_disable();
   // start up serial port`s
   Serial.begin(9600);
-  Serial.println(F("\n\tStart_Smart_Home_Apps v_06\n")); 
+  Serial.println(F("\n\tStart_Smart_Home_Apps v_07\n")); 
   // SIM
   pinMode(RST_PIN, OUTPUT);
   digitalWrite(RST_PIN, SIM_RST);
@@ -135,9 +135,7 @@ void setup() {
   digitalWrite(MOTION_SENSOR_PIN, LOW);
   //  check outer voltage
   pinMode(VOLTAGE_PIN, INPUT);
-  // init params
-  isSendMotion = util.isSendMotionSMS();
-  coolThemperature = util.getCoolThemperature();
+
   /*  ISR   */
   // timer 2 intr handler freq=1Hz, period=1s
   timer_init_ISR_1Hz(TIMER_DEFAULT);
@@ -162,9 +160,15 @@ void setup() {
   motionCounter = 0;
   bitClear(warningFlags, MOTION_SMS);
   flags = 0b11100000;
-#if DEBUG
-  Serial.println("COOL themperature = " + String(coolThemperature));
-#endif
+  // init params
+  isSendMotion = util.isSendMotionSMS();
+  coolThemperature = util.getCoolThemperature();
+  Serial.println("\nOn Init coolThemperature= " + String(coolThemperature) +  "  isSendMotion= " + String(isSendMotion));
+  // prepare SIM900 module(clear all sms)
+  modem.dropGSM();
+  modem.sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
+  delay(500);
+  modem.dropGSM();
   executeScheduledTask();
 }
 
@@ -282,7 +286,7 @@ void executeScheduledTask() {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));
   if (digitalRead(DUCT_PIN) == HIGH)digitalWrite(LED_PIN, LOW);// off led
 #if DEBUG
-  Serial.print(F("\n\t readThemperature"));
+  Serial.print(F("\n\t readThemperature "));
 #endif
   modem.dropGSM();
   modem.print("AT \r");
@@ -372,9 +376,7 @@ uint8_t handleSms() {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));// send busy for all caller
   modem.dropGSM();
   uint8_t code = util.handleIncomingSms();
-  if (code == SEND_INFO_SMS) {
-    sms.sendInfoSms();
-  }
+  if (code == SEND_INFO_SMS) sms.sendInfoSms();
   if (code == SET_COOL_THEMPERATURE_RECORD)coolThemperature = util.getCoolThemperature();
   modem.sendCommand(F("AT+GSMBUSY=0 \r"));// ready make answers for caller
   modem.dropGSM();
@@ -468,7 +470,7 @@ void timer_handle_interrupts(int timer) {
 #if DEBUG == 0
   if (timerCounter == 43200) {
 #else
-  if (timerCounter == 100) {
+  if (timerCounter == 300) {
 #endif
     loopCounter++;
     timerCounter = 0;
