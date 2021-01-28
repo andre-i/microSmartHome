@@ -1,6 +1,6 @@
+#define VERSION 0.09
 /*
-    VERSION
-    v_06
+
        fix set duct mode after reset Arduino
         1)set 3 mode(test, duct, work)
         2)add change mode for set Motion warning sms
@@ -8,7 +8,7 @@
         4) add by info sms mode for send motion sms
  */
 
- 
+
 /*
      PIN description
      D2(2) - motion sensor
@@ -43,7 +43,21 @@
   4) for whether send motion warning sms - #My# or #Mn#
               #M#y# - motion sms be send
               #M#n# - motion sms no send
-  Warning : after set new values arduino make reset
+  Warning : after set new values the arduino module make reset
+  5) reset module - #R#O#D  - (letters may be capitalise or not)
+                    r - reset, 0 - on, d - demand
+-----------  set parameter from DUCT mode  -------------------------------------
+ all comands must be set only in "GSM" mode - AT+CSCS="GSM"
+1) clients(1-3) AT+CPBW=(1-3),"(PHONE)",145, "(PHONE)"
+                (1-3) client number from 1 to 3
+                PHONE tel number +.....(11 digits)
+2) set cool tehemperature format AT+CPBW=4,t,129,"coolTemp"
+3) set is send motionSms format AT+CPBW=5,(0 or 1),129,"isSendMotion"
+                                          1 - send, 0 - not send
+4) set write api key for ThingSpeak AT+CPBW=6,"12345",129,"#apiKey#"
+                                    #apiKey# - char '#' is mandatory
+                                               apiKey - 16 symbols from ThingSpeak(as showed)
+
 */
 
 // Include the libraries we need
@@ -58,6 +72,7 @@
 #include "VoiceHandler.h"
 #include "Constants.h"
 #include "Util.h"
+#include "HandlerHTTP.h"
 
 // redifene max buffer for SoftwareSerial otherwice
 //  can`t set request (small buffer size)
@@ -77,6 +92,7 @@ Modem modem(&pipe);
 SmsMaker sms(&modem);
 VoiceHandler voice(&modem);
 Util util(&modem);
+HandlerHTTP http(&modem);
 
 /*  variables  */
 
@@ -122,11 +138,13 @@ void setup() {
   wdt_disable();
   // start up serial port`s
   Serial.begin(9600);
-  Serial.println(F("\n\tStart_Smart_Home_Apps v_07\n")); 
+  Serial.println(" ");
+  Serial.print(F("\n\tStart_Smart_Home_Apps v_"));
+  Serial.println(VERSION);
   // SIM
   pinMode(RST_PIN, OUTPUT);
   digitalWrite(RST_PIN, SIM_RST);
-  delay(9000);
+  delay(1000);
   // led
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
@@ -154,7 +172,7 @@ void setup() {
     printAddress(sensorAddr);
     }
   */
-  delay(4000);
+  delay(2000);
   Serial.println(F("\n  START WATCH !!!\n"));
   modem.initModem();  // init sim module
   motionCounter = 0;
@@ -169,6 +187,8 @@ void setup() {
   modem.sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
   delay(500);
   modem.dropGSM();
+  // init for ThingSpeak service
+  http.init();
   executeScheduledTask();
 }
 
@@ -254,11 +274,11 @@ void buttonHandle() {
   if (pressCounter > 2 ) {
     Serial.print("\n ___ mode : ");
     switch (mode) {
-      case DUCT: mode = TEST; Serial.println("TEST");
+      case DUCT: mode = TEST; Serial.print("TEST");
         break;
-      case TEST: mode = WORK ; Serial.println("WORK");
+      case TEST: mode = WORK ; Serial.print("WORK");
         break;
-      case WORK: mode = DUCT; Serial.println("DUCT");
+      case WORK: mode = DUCT; Serial.print("DUCT");
       default:
         Serial.println(" ___");
     }
@@ -267,26 +287,16 @@ void buttonHandle() {
   while (digitalRead(BUTTON_PIN) == LOW) {}
 }
 
-
-/*
-   Set delay time for any GSM task
-*/
-void setEspiredTime(uint8_t delayTime) {
-  noInterrupts();
-  delayEspired = delayTime;
-  interrupts();
-}
-
 /*
    Read themperature and set it to VoiceHandler
    if themperature small than MIN_FIRING_THEMPERATURE
     call func for send warning sms
 */
 void executeScheduledTask() {
-  modem.sendCommand(F("AT+GSMBUSY=1 \r"));
+  modem.sendCommand(F("AT+GSMBUSY=1 \r"));  // lock modem
   if (digitalRead(DUCT_PIN) == HIGH)digitalWrite(LED_PIN, LOW);// off led
 #if DEBUG
-  Serial.print(F("\n\t readThemperature "));
+ // Serial.print(F("\n\t readThemperature "));
 #endif
   modem.dropGSM();
   modem.print("AT \r");
@@ -301,16 +311,21 @@ void executeScheduledTask() {
   // request to all devices on the bus
   sensors.requestTemperatures(); // Send the command to get temperatures
   int themperature = (int)sensors.getTempC(sensorAddr);
-  if (themperature < 1 && themperature > -60)themperature = 1;
   // set new data
   voice.setSensorsData(coolThemperature, themperature, motionCounter);
-  if (digitalRead(DUCT_PIN) == LOW)Serial.println("\n\t t= " + String(themperature) + "; motion= " + String(motionCounter) + " ;");
+  //http.setSensorData(themperature, motionCounter);
+  if (digitalRead(DUCT_PIN) == LOW)Serial.println("\n\t t = " + String(themperature) + "; motion = " + String(motionCounter) + " ;");
   if (themperature < coolThemperature && bitRead(flags, COOL_SEND_FLAG) == 1) {
     Serial.println(F("\tCall for send cool SMS"));
     bitSet(warningFlags, COOL_SMS);
   }
   if (themperature > coolThemperature && bitRead(warningFlags, COOL_SMS) == 1)bitClear(warningFlags, COOL_SMS);
-  handleSms();
+  // after check on warning - send data to server
+  if(http.isHaveParam()){
+    int res = http.sendDataToServer(themperature, motionCounter, (digitalRead(VOLTAGE_PIN) == HIGH));
+    Serial.println("On send return code: " + String(res));
+  }
+  handleSms(); // in this function execute AT+GSMBUSY=0 - modem unlock
 }
 
 /*
@@ -357,7 +372,9 @@ void handleModemMsg() {
       code = voice.handleIncoming(phone);
       if (code == ASSIGN_ADMIN)break;
       handleSms(); break;
-    case UNDEFINED: code = IS_EMPTY; modem.dropGSM(); break;
+    case UNDEFINED: 
+       code = IS_EMPTY;
+       modem.dropGSM(); break;
   }
 #if DEBUG
   Serial.print("  handleModemMsg CODE : " + String(code));
@@ -374,11 +391,13 @@ void handleModemMsg() {
 */
 uint8_t handleSms() {
   modem.sendCommand(F("AT+GSMBUSY=1 \r"));// send busy for all caller
+  modem.checkOnOK(0);
   modem.dropGSM();
   uint8_t code = util.handleIncomingSms();
   if (code == SEND_INFO_SMS) sms.sendInfoSms();
   if (code == SET_COOL_THEMPERATURE_RECORD)coolThemperature = util.getCoolThemperature();
   modem.sendCommand(F("AT+GSMBUSY=0 \r"));// ready make answers for caller
+  modem.checkOnOK(0);
   modem.dropGSM();
   return code;
 }
@@ -397,7 +416,7 @@ uint8_t handleSms() {
 void motion_sensor_INTR_handler(void) {
   dropMotionTimer = DROP_MOTION_TIME;   // start wait for drop motion counter
   if (bitRead(flags, MOTION_SEND_FLAG) == 1 )bitSet(warningFlags, MOTION_SMS);
-  if (motionCounter < 6) motionCounter++;
+  if (motionCounter < 10) motionCounter++;
 }
 
 /*
@@ -491,3 +510,57 @@ void timer_handle_interrupts(int timer) {
   // if(timerCounter == 20) handleSms();
 #endif
 }
+
+
+//  ============================================================================
+//                        GLOBAL FUNCTIONS
+//  ============================================================================
+
+
+
+/*
+   Set delay time for any GSM task
+*/
+void setEspiredTime(uint8_t delayTime) {
+  noInterrupts();
+  delayEspired = delayTime;
+  interrupts();
+}
+
+/*
+   if src contain pattern return 1
+   otherwise return 0
+*/
+/*
+int findInStr( char *src, char *pattern){
+   // printf("On check src=%s pattern=%s", src,pattern);
+    int n=0;
+    while(src[n] != '\0' && n < 200){
+        while( src[n] != '\0' && src[n] != pattern[0])n++;
+        if(src[n] == '\0') return 0;
+        n = checkInSubstr(src, pattern, n);
+        if( n == 0) return 1;
+    }
+   // printf("\n End of str");
+    return 0;
+}
+
+/*
+  add-on for findInStr function
+  compare first part of tail src string by pattern
+  if equals return 0
+  otherwise return start position of remainder src(unchecked tail)
+*/
+/*
+int checkInSubstr(char *src, char *pattern, int srcPos){
+    srcPos++;  //(first symb. is equals)
+    int m = 1;  //  second symbol in pattern
+    while(pattern[m] != '\0' && src[srcPos] != '\0'){
+      // if symbols not equals - return unchecked tail position
+        if(pattern[m] != src[srcPos] || src[srcPos] == '\0')return srcPos;
+        srcPos++;
+        m++;
+    }
+    return 0;
+}
+*/

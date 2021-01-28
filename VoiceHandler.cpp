@@ -10,7 +10,7 @@ VoiceHandler::VoiceHandler(Modem *m) {
 
 void VoiceHandler::setSensorsData(uint8_t cool, int themp, uint8_t motions) {
   coolThemperature = cool;
-  themperature = themp;
+  themperature = (themp > 0) ? themp : 1;
   motionCounter = motions;
 
 }
@@ -68,10 +68,11 @@ uint8_t VoiceHandler::fillPhoneFromCall(char *str) {
    make voice answer from module "amr" files
 */
 uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
+  modem->sendCommand(F("ATA"));
   uint8_t retVal ;
-  modem->sendCommand(F("ATA \r"));
-  modem->sendCommand(F("AT+VTD=20 \r"));
-  modem->sendCommand(F("AT+VTS=\"1,4\",55 \r"));
+  modem->sendCommand(F("AT+SIMTONE=1,1070,200,200,2200"));
+  delay(2500);
+  // if(!modem->checkOnOK(DELAY_FOR_OK))return NO_PLAY_SOUND;
   if (!isSayThemperature) {
     retVal = playFile(GOOD_SOUND);
     modem->sendCommand(F("ATH \r"));
@@ -86,8 +87,8 @@ uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
   }
   if (digitalRead(VOLTAGE_PIN) == LOW) {
     retVal = playFile(NO_VOLTAGE);
-    for (uint8_t i = 0; i < 3; i++)playFile((retVal == SUCCESS) ? CAT_SOUND : BAD_SOUND);
-  } 
+   // for (uint8_t i = 0; i < 3; i++)playFile((retVal == SUCCESS) ? CAT_SOUND : BAD_SOUND);
+  }
   modem->sendCommand(F("ATH \r"));
   return retVal;
 }
@@ -118,26 +119,23 @@ uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
 */
 uint8_t VoiceHandler::sayThemperature() {
   modem->dropGSM();
-  playFile(VAWE_SOUND);
+ // playFile(VAWE_SOUND);
   playFile(FIRING_SOUND);
   String str;
-  if (themperature < -60) {
-    playFile(THERMO_BAD);
-    for (uint8_t i = 0; i < 3; i++) playFile(CAT_SOUND);
+  if(themperature < 1) themperature = 0;
+  Serial.println("  t = " + String(themperature));
+  if (themperature < 21) {
+    str = String(themperature) + ".amr";
+    if (playFile(str.c_str()) != SUCCESS)return NO_PLAY_SOUND;
   } else {
-    if (themperature < 21) {
-      str = themperature + ".amr";
-      if (playFile(str.c_str()) != SUCCESS)return NO_PLAY_SOUND;
-    } else {
-      uint8_t tens = 2;
-      while ((themperature - tens * 10) > 9)tens++;
-      str = String(tens) + "0.amr";
+    uint8_t tens = 2;
+    while ((themperature - tens * 10) > 9)tens++;
+    str = String(tens) + "0.amr";
+    playFile(str.c_str());
+    uint8_t ones = themperature - tens * 10;
+    if (ones != 0) {
+      str = String(ones) + ".amr";
       playFile(str.c_str());
-      uint8_t ones = themperature - tens * 10;
-      if (ones != 0) {
-        str = String(ones) + ".amr";
-        playFile(str.c_str());
-      }
     }
   }
   delayForPlay();
@@ -155,10 +153,10 @@ uint8_t VoiceHandler::sayThemperature() {
    return NO_PLAY_SOUND in any error
 */
 uint8_t VoiceHandler::playFile(const char *fileName) {
-#if DEBUD
-  Serial.print(" Try play file : ");
-  Serial.println(fileName);
-#endif
+//#if DEBUD
+    Serial.print(" Try play file : ");
+    Serial.println(fileName);
+//#endif
   delay(10);
   while (modem->available() > 0) {
     modem->read();

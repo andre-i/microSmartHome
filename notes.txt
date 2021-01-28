@@ -1,0 +1,12 @@
+/*
+
+//  http request priototype
+//   https://api.thingspeak.com/update.json?api_key=<write_api_key>&field1=...&field2=...&field3=...
+
+HandlerHTTP class :
+  api key is 6 record in sim phone book
+
+Phone book record for WRITE API KEY format example:
+  at+cpbw=5,"12345",129,"#16_symbols_api_key#"
+      # - symbols is mandatory
+*/

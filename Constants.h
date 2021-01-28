@@ -12,6 +12,9 @@
 #define MIN_FIRING_THEMPERATURE  30
 #define UCS2_PHONE_SIZE 48
 
+// http
+//#define HTTP_REQUEST
+
 //  modem pins
 #define RX_PIN   3
 #define TX_PIN  4
@@ -21,7 +24,7 @@
 // ----- motion sensors ----
 #define MOTION_SENSOR_PIN  2
 #define DROP_MOTION_TIME 900
-// ---- signals led  ----
+// ---- signals led on aruino board ----
 #define LED_PIN   13
 // -----  voltage pin
 #define VOLTAGE_PIN  14
@@ -54,7 +57,7 @@
 #define NO_VOLTAGE "noVoltage.amr"
 
 //   delays beetwen send sms
-#define DELAY_FOR_VOLTAGE  32400  // 9 hour beetwen send outer voltage is noll (0v)
+#define DELAY_FOR_VOLTAGE  65400  // ~18 hour beetwen send outer voltage is noll (0v)
 #define DELAY_FOR_COOL  32400   // 9 hour beetwen send very small firing themperature
 #define DELAY_FOR_MOTION 14400  // 4 hour beetwen send motion in house
 // delay times (wait for module answer)
@@ -94,6 +97,8 @@ enum clients {
   CLIENT2 = 3,
   COOL_THEMPERATURE_RECORD = 4,
   IS_SEND_MOTION_RECORD = 5,
+  WRITE_API_KEY = 6,
+  FIELDS_LIST = 7
 };
 
 // types modem requests
@@ -102,6 +107,10 @@ enum requests {
   INC_CALL = 2,
   UNDEFINED = 3
 };
+
+//  http service
+//  api key is 5 record in sim phone book
+
 
 
 /*   DATA in flash  */
@@ -118,8 +127,12 @@ const char *const messages[] PROGMEM = { cool, motion, voltage };
 //  for choose messages
 enum { COOL, MOTION, VOLTAGE };
 
-//  PUBLIC FUNCTIONS
+// ---------- PUBLIC FUNCTIONS  ------------------------
+//       it placke - smartHome.ino
+
 //  need for wait of the answer from modem
 void setEspiredTime(uint8_t delayTime);
+// return 0 if src contains pattern , 1 - otherwise
+int findInStr( char *src, char *pattern);
 
 #endif
