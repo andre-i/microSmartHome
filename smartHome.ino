@@ -152,8 +152,9 @@ void setup() {
   pinMode(MOTION_SENSOR_PIN, INPUT);
   digitalWrite(MOTION_SENSOR_PIN, LOW);
   //  check outer voltage
+#if READ_AS_ANALOG == 0
   pinMode(VOLTAGE_PIN, INPUT);
-
+#endif
   /*  ISR   */
   // timer 2 intr handler freq=1Hz, period=1s
   timer_init_ISR_1Hz(TIMER_DEFAULT);
@@ -202,11 +203,13 @@ void loop() {
 
     // --------------- warnings SMS ---------------------
     // voltage
+#if READ_AS_ANALOG == 0    
     if (digitalRead(VOLTAGE_PIN) == LOW
         && bitRead(flags, VOLTAGE_SEND_FLAG) == 1) {
       Serial.println(F("Start send low VOLTAGE sms"));
       if (sendWarning(VOLTAGE))bitClear(flags, VOLTAGE_SEND_FLAG);
     }
+#endif
     // motion
     if (bitRead(warningFlags, MOTION_SMS) == 1
         && bitRead(flags, MOTION_SEND_FLAG) == 1 && isSendMotion == SEND_SMS ) {
@@ -322,7 +325,12 @@ void executeScheduledTask() {
   if (themperature > coolThemperature && bitRead(warningFlags, COOL_SMS) == 1)bitClear(warningFlags, COOL_SMS);
   // after check on warning - send data to server
   if(http.isHaveParam()){
-    int res = http.sendDataToServer(themperature, motionCounter, (digitalRead(VOLTAGE_PIN) == HIGH));
+    int res = http.sendDataToServer(themperature, motionCounter,
+      #if READ_AS_ANALOG==0
+        (digitalRead(VOLTAGE_PIN) == HIGH));
+      #else
+        (analogRead(VOLTAGE_PIN));
+      #endif
     Serial.println("On send return code: " + String(res));
   }
   handleSms(); // in this function execute AT+GSMBUSY=0 - modem unlock

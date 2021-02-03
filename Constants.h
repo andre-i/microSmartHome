@@ -1,6 +1,10 @@
 #ifndef Constants_h
 #define Constants_h
 
+// Read type
+// if set 1 then VOLTAGE_PIN be read analog value on it
+#define READ_AS_ANALOG 0   
+
 /*
  * ============================DEFINIONS==================================
  */
@@ -11,9 +15,6 @@
 // critical values
 #define MIN_FIRING_THEMPERATURE  30
 #define UCS2_PHONE_SIZE 48
-
-// http
-//#define HTTP_REQUEST
 
 //  modem pins
 #define RX_PIN   3
@@ -133,6 +134,6 @@ enum { COOL, MOTION, VOLTAGE };
 //  need for wait of the answer from modem
 void setEspiredTime(uint8_t delayTime);
 // return 0 if src contains pattern , 1 - otherwise
-int findInStr( char *src, char *pattern);
+//int findInStr( char *src, char *pattern);
 
 #endif
