@@ -1,4 +1,3 @@
-
 #include "Util.h"
 
 extern volatile uint8_t delayEspired;
@@ -38,28 +37,28 @@ bool Util::assignAdmin(char *phone) {
 #endif
   ;
   if (!modem->setFormatSms(GSM_FORMAT)) return false;
-  if (writeClientPhone( ADMIN, phone) != SUCCESS)return false;
+  if (writeToPhoneBook( ADMIN, phone) != SUCCESS)return false;
 #if DEBUG
   Serial.print(F("success write admin "));
 #endif
   char empty[13] = { '+', '0', '0', '0', '\0' };
-  if (writeClientPhone( CLIENT1, empty) != SUCCESS) {
+  if (writeToPhoneBook( CLIENT1, empty) != SUCCESS) {
     Serial.print(F("wrong erase client1"));
   }
-  if (writeClientPhone( CLIENT2, empty) != SUCCESS) {
+  if (writeToPhoneBook( CLIENT2, empty) != SUCCESS) {
     Serial.print(F("wrong erase client2"));
   }
   return SUCCESS;
 }
 
-uint8_t Util::writeClientPhone(uint8_t clientNumber, char *phone) {
+uint8_t Util::writeToPhoneBook(uint8_t clientNumber, char *str) {
   uint8_t ret = WRONG_DATA;
 #if DEBUG
   uint8_t i = 0;
   Serial.print(F("\n try write [ "));
   Serial.print(String(clientNumber) + " ; ");
-  while (phone[i] != '\0') {
-    Serial.write(phone[i]);
+  while (str[i] != '\0') {
+    Serial.write(str[i]);
     i++;
   }
   Serial.print(" ] ");
@@ -70,15 +69,21 @@ uint8_t Util::writeClientPhone(uint8_t clientNumber, char *phone) {
     delay(20);
     modem->dropGSM();
     modem->print("AT+CPBW=" + String(clientNumber) + ",\"");
-    writeCharsArr(phone);
+    if(clientNumber != WRITE_API_KEY )writeCharsArr(str);
+    else {
+      char arr[] = {'1','2','3','4','5'};
+      writeCharsArr(arr);
+    }
     if (clientNumber < COOL_THEMPERATURE_RECORD) {
       modem->print("\",145,\"");
-      writeCharsArr(phone);
+      writeCharsArr(str);
       modem->println("\" \r");
     }
     else {
       if ( clientNumber == COOL_THEMPERATURE_RECORD) modem->println("\",129,\"coolThemp\" \r");
-      if ( clientNumber == IS_SEND_MOTION_RECORD) modem->println("\",129,\"sendMotion\" \r");
+      if ( clientNumber == IS_SEND_MOTION_RECORD)modem->println("\",129,\"sendMotion\" \r");
+      if ( clientNumber == WRITE_API_KEY) modem->println(String("\",129,\"#") +  String(str) + String("#\" \r"));
+    //  if ( clientNumber == FIELDS_LIST) modem->println("\",129,\"#123#\" \r");
     }
     modem->flush();
     delay(20);
@@ -131,6 +136,7 @@ uint8_t Util::handleIncomingSms() {
   }
   modem->dropGSM();
   if (ret != IS_EMPTY)modem->sendCommand(F("AT+CMGDA=\"DEL ALL\" \r"));
+  delay(1);
   modem->dropGSM();
   return ret;
 }
@@ -188,6 +194,7 @@ uint8_t Util::executeRequest(void) {
     return ret;
   }
   if ( ch == 'M' || ch == 'm')return setIsMotion();
+  if(ch == 'R' || ch =='r') return startReboot();
   if (ch != 'w' && ch != 'W') return SEND_INFO_SMS;
   if (modem->read() != '#')return WRONG_TASK;
   if (modem->available() > 0)ch = modem->read();
@@ -204,7 +211,7 @@ uint8_t Util::executeRequest(void) {
   if ( i < 11)return WRONG_DATA;
   phone[12] = '\0';
   if (!modem->checkPhoneFormat(phone)) return WRONG_DATA;
-  return writeClientPhone( clientNumber, phone);
+  return writeToPhoneBook( clientNumber, phone);
 }
 
 bool Util::checkOnIncomingSms() {
@@ -230,7 +237,7 @@ uint8_t Util::setIsMotion() {
   ch = modem->read();
   if ( ch == 'Y' || ch == 'y' )isSend[0] = '1';
   else  isSend[0] = '0';
-  if ( writeClientPhone(IS_SEND_MOTION_RECORD, isSend) != SUCCESS)return RETURN_ERROR;
+  if ( writeToPhoneBook(IS_SEND_MOTION_RECORD, isSend) != SUCCESS)return RETURN_ERROR;
   WDT_Reset();
   return SUCCESS;
 }
@@ -261,7 +268,8 @@ uint8_t Util::setCoolThemperature() {
     if ( ch < 48 && ch > 57) return WRONG_DATA;
     themp[1] = ch;
   }
-  if (writeClientPhone(COOL_THEMPERATURE_RECORD, themp) != SUCCESS)return NO_SEND;
+  if (writeToPhoneBook(COOL_THEMPERATURE_RECORD, themp) != SUCCESS)return NO_SEND;
+  WDT_Reset();
 #if DEBUG
   Serial.print(F("SUCCESS t = "));
   Serial.println(themp);
@@ -286,6 +294,41 @@ uint8_t Util::getCoolThemperature() {
 }
 
 /*
+ * reserved for ...
+uint8_t Util::setApiKey(char *apiKey){
+  return writeToPhoneBook(WRITE_API_KEY, apiKey);
+}
+
+uint8_t Util::setFieldsList(char *fieldsList){
+  return writeToPhoneBook(FIELDS_LIST, fieldsList);
+}
+*/
+
+/*
+ * start reboot on admin demand
+ * sms command must be : #r(R)#o(O)#d(D) - (r)eboot (o)n (d)emand
+ */
+uint8_t Util::startReboot(){
+  delay(100);
+  char ch;
+  if(modem->available() < 4) return WRONG_TASK;
+  if(modem->read() == '#'){
+    ch = modem->read();
+    if( (ch == 'o' || ch == 'O') && modem->read() == '#') {
+      ch = modem->read();
+      if(ch == 'd' || ch == 'D'){
+        Serial.println(F("Reset on ADMIN demand"));
+        WDT_Reset();
+        return SUCCESS;
+      }
+    }
+  }else{
+    return WRONG_TASK;
+  }  
+  
+}
+
+/*
     reset Arduino after set new values for
    1) cool themperature or
    2) change send motion sms state
@@ -294,5 +337,8 @@ void Util::WDT_Reset() {
   digitalWrite(RST_PIN, LOW);
   delay(9000);
   wdt_enable(WDTO_8S);//  REBOOT the device after 8 seconds
-  Serial.println(F("\n___________________________\n\t RESET ON CHANGE PARAMETERS \n___________________________"));
+  Serial.println(F("\n\n\t RESET ON CHANGE PARAMETERS \n"));
+  while(Serial.available() > 0)Serial.read();
+  modem->dropGSM();
+  delay(9000);
 }

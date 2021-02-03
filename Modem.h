@@ -16,6 +16,8 @@ class Modem {
     void dropGSM();
     void sendCommand(String toSIM);
     void rebootSIM(void);
+    //  http purpose
+    bool openConnect(void);
     bool closeConnect(void);
     // wrapped methods from SoftvareSerial
     size_t write(uint8_t byte) {
@@ -35,7 +37,7 @@ class Modem {
       int len =  gsm->print(str);
       gsm-> flush();
       delay(5);
-      return len; 
+      return len;
     };
     int println(String str) {
       return print( str + '\n');
@@ -54,7 +56,10 @@ class Modem {
     // var
     SoftwareSerial *gsm;
     bool isShowCommand = false;
+    int DELAY_FOR_CONNECT = 20;
     // func
+    //  http purpose
+    bool checkConnect(void);
 };
 
 

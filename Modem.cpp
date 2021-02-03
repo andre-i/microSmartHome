@@ -4,6 +4,7 @@ extern volatile uint8_t delayEspired;
 
 
 Modem::Modem(SoftwareSerial *my) {
+  Serial.print(F("Start create modem"));
   gsm = my;
   gsm->begin(9600);
 }
@@ -39,15 +40,22 @@ void Modem::initModem() {
     rebootSIM();
   }
   else {
+    setEspiredTime(1);
     // ---------------------- on success get connect tune modem ---------------------------
     if (isShowCommand) Serial.println(" \nEnds of wait ");
     dropGSM();
     sendCommand(F("ATE0 \r")); // echo off
+    checkOnOK(0);
     sendCommand(F("ATV1 \r")); // out on echo off
+    checkOnOK(0);
     sendCommand(F("AT+CMGF=1 \r")); // sms text mode
-    sendCommand(F("AT+CSCS=\"gsm\" \r")); // sms gsm charset
+    checkOnOK(0);
+    sendCommand(F("AT+CSCS=\"GSM\" \r")); // sms gsm charset
+    checkOnOK(0);
     sendCommand(F("AT+CPBS=\"SM\" \r")); // set "SM" phonebook
+    checkOnOK(0);
     sendCommand(F("AT+CLIP=1 \r")); // The calling line identity(auto get caller phone number
+    checkOnOK(0);
     sendCommand(F("AT+CFSINIT \r")); //
     delay(2000);
     dropGSM();
@@ -57,8 +65,6 @@ void Modem::initModem() {
     if (gsm->available() > 0) dropGSM();
   }
 }
-
-
 
 
 /*
@@ -91,9 +97,64 @@ void Modem::sendCommand(String toSIM) {
   }
 #endif
   gsm->println(toSIM);
+  gsm->print("\r");
   gsm->flush();
   delay(1);
 }
+
+//=================  for  HTTP connection ====================================
+
+
+/*
+  Start GPRS connect and open HTTP session
+*/
+bool Modem::openConnect(void){
+  while(Serial.available() > 0) Serial.read();
+  dropGSM();
+  sendCommand(F("AT+CFSTERM"));
+  dropGSM();
+  if(checkConnect() == false){ 
+  //Serial.println(F("Try Open GPRS connect for HTTP"));
+    dropGSM();
+    sendCommand(F("AT+SAPBR=1,1"));
+    if(!checkOnOK(DELAY_FOR_CONNECT)) return false;
+  //  Serial.println(F("Success init GPRS/ Try open HTTP"));
+    dropGSM();
+    sendCommand(F("AT+HTTPINIT"));
+  }else{
+    Serial.println(F("Already connected"));
+    sendCommand(F("AT+HTTPINIT"));
+  }
+  return checkOnOK(0);
+}
+
+/*
+  return true if module is connected to GPRS
+*/
+bool Modem::checkConnect(void){
+  sendCommand(F("AT+SAPBR=2,1"));
+  setEspiredTime(DELAY_FOR_ANSWER);
+  while(available() < 22 && delayEspired > 0)delay(10);
+  delay(50);
+  uint8_t size= available();
+  char res[size + 1];
+  uint8_t n = 0;
+  while(n < size){
+    res[n]=read();
+    n++;
+  }
+  res[n]='\0';
+  Serial.println("On check connect get " + String(res));
+  char pattern[] = {'0','.','0','.','0'};
+  //  First REPlace
+  if(strstr(res, pattern) != NULL) {
+    sendCommand(F("AT+HTTPTERM "));
+    checkOnOK(0);
+    return false;
+  }
+  return true;
+}
+
 
 
 
@@ -104,20 +165,14 @@ bool Modem::closeConnect(void) {
 #if DEBUG
   Serial.println(F("\ncloseConnect"));
 #endif
-  sendCommand(F("AT+HTTPTERM \r"));
-  //  checkOnOK(DELAY_FOR_ANSWER);
   dropGSM();
-  sendCommand(F("AT+SAPBR=0,1 \r"));
-  if (!checkOnOK(DELAY_FOR_ANSWER)) {
-#if DEBUG
-    //  Serial.println(F("Fail close gprs call \"check on suspend\""));
-#endif
-    sendCommand("AT \r");
-    if (!checkOnOK(0))rebootSIM();
-  }
+  sendCommand(F("AT+HTTPTERM \r"));
+  dropGSM();
+  sendCommand(F("AT+CFSINIT"));
   dropGSM();
   return true;
 }
+
 
 /*
     check answer on contain "Ok" or "ERROR"
@@ -176,14 +231,14 @@ bool Modem::checkOnOK(uint8_t wait_time) {
 
 
 void Modem::rebootSIM(void) {
-#if DEBUG
-  Serial.println(F("\nREBOOT"));
-#endif
   digitalWrite(RST_PIN, SIM_RST);
   delay(9000);
+  Serial.println(F("\nREBOOT\n"));
   initModem();
 }
 
+
+//  =====================  utility  =======================================
 
 /*
    fill client number on order in phonebook
