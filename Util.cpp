@@ -113,7 +113,7 @@ void Util::writeCharsArr(char *arr) {
 */
 uint8_t Util::handleIncomingSms() {
   uint8_t ret;
-  Serial.println(F("handleIncomingSms "));
+  Serial.print(F("handleIncomingSms "));
   char admin[13];
   if (!modem->fillGSMPhone( ADMIN, admin))return RETURN_ERROR;
   modem->dropGSM();
@@ -130,8 +130,9 @@ uint8_t Util::handleIncomingSms() {
     if (digitalRead(DUCT_PIN) == LOW) {
       Serial.print(F("DEBUG: it is not SMS - content("));
       while (modem->available() > 0)Serial.write(modem->read());
-      Serial.println(")");
     }
+    Serial.println(" )");
+    
     ret = IS_EMPTY;
   }
   modem->dropGSM();
