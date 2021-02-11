@@ -30,5 +30,7 @@ Need library : OneWire, DallasTemperature, Arduino-Timer-Api
     * при отсутствии внешнего напряжения будет включено сообщение о его отсутствии.
 
 `Все настройки можно просмотреть в файлах smartHome.ino, Constants.h`
+
+### [Страница cправки](https://andre-i.github.io/microSmartHome/Index_ru.html)
    
     
