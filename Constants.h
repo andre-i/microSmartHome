@@ -115,10 +115,11 @@ enum requests {
 
 
 /*   DATA in flash  */
-//  SMS
+
+// -------------------------- SMS messages ------------------------------------
 #define MAX_MESS_LEN 90
-//  message on cool themperature "Отопление не работает"; 85 symbols
-const char  cool[] PROGMEM =  "041e0442043e043f043b0435043d043804350020043d04350020044004300431043e04420430043504420021\0";
+//  message on cool themperature "низкая температура";  
+const char  cool[] PROGMEM =  "043d04380437043a0430044f002004420435043c043f0435044004300442044304400430\0";
 //  message on trigged motion sensor "Движение в доме" ; 61 symbols
 const char  motion[] PROGMEM = "04140432043804360435043d043804350020043200200434043e043c0435\0";
 //  Turn off voltage  "Пропало напряжение!"  77 symbols

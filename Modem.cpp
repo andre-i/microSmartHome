@@ -54,7 +54,7 @@ void Modem::initModem() {
     checkOnOK(0);
     sendCommand(F("AT+CPBS=\"SM\" \r")); // set "SM" phonebook
     checkOnOK(0);
-    sendCommand(F("AT+CLIP=1 \r")); // The calling line identity(auto get caller phone number
+    sendCommand(F("AT+CLIP=1 \r")); // The calling line identity(auto get caller phone number)
     checkOnOK(0);
     sendCommand(F("AT+CFSINIT \r")); //
     delay(2000);

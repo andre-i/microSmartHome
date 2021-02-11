@@ -1,11 +1,9 @@
 #define VERSION 0.09
 /*
-
-       fix set duct mode after reset Arduino
-        1)set 3 mode(test, duct, work)
-        2)add change mode for set Motion warning sms
-        3)add reset Arduino after change cool themperature or change motion mode
-        4) add by info sms mode for send motion sms
+            changes:
+       
+        1) add reset on admin demand( get appropriate sms )
+        2) add support for send data to ThingSpeak
  */
 
 

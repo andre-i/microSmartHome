@@ -70,9 +70,8 @@ uint8_t VoiceHandler::fillPhoneFromCall(char *str) {
 uint8_t VoiceHandler::makeAnswer(bool isSayThemperature) {
   modem->sendCommand(F("ATA"));
   uint8_t retVal ;
-  modem->sendCommand(F("AT+SIMTONE=1,1070,200,200,2200"));
+  modem->sendCommand(F("AT+SIMTONE=1,1070,200,200,2400"));
   delay(2500);
-  // if(!modem->checkOnOK(DELAY_FOR_OK))return NO_PLAY_SOUND;
   if (!isSayThemperature) {
     retVal = playFile(GOOD_SOUND);
     modem->sendCommand(F("ATH \r"));
